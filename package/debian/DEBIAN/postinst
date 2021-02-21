@@ -1,0 +1,31 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "configure" ]
+then
+  groupadd -r thingsplex || true
+  groupadd -r lora-ttn || true
+
+  useradd -r -N -M -d / -s /bin/false -g thingsplex lora-ttn || true
+
+  chown -R lora-ttn:thingsplex /var/log/thingsplex/lora-ttn/ || true
+  chown -R lora-ttn:lora-ttn /opt/thingsplex/lora-ttn/ || true
+fi
+
+deb-systemd-helper unmask lora-ttn.service >/dev/null || true
+
+if deb-systemd-helper --quiet was-enabled lora-ttn.service; then
+  systemctl enable lora-ttn.service || true
+else
+  deb-systemd-helper update-state lora-ttn.service >/dev/null || true
+fi
+
+if [ -d /run/systemd/system ]; then
+  systemctl --system daemon-reload >/dev/null || true
+
+  if [ -n "$2" ]; then
+    deb-systemd-invoke try-restart lora-ttn.service >/dev/null || true
+  else
+    deb-systemd-invoke start lora-ttn.service >/dev/null || true
+  fi
+fi

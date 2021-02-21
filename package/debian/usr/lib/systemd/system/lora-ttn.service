@@ -1,0 +1,14 @@
+[Unit]
+Description=lora-ttn
+
+[Service]
+Type=simple
+ExecStart=/opt/thingsplex/lora-ttn/lora-ttn
+User=lora-ttn
+WorkingDirectory=/opt/thingsplex/lora-ttn
+Restart=always
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target
