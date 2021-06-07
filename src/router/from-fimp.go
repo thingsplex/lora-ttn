@@ -6,9 +6,18 @@ import (
 	"github.com/futurehomeno/fimpgo/edgeapp"
 	log "github.com/sirupsen/logrus"
 	"github.com/thingsplex/lora-ttn/model"
+	"github.com/thingsplex/lora-ttn/ttn"
 	"path/filepath"
 	"strings"
 )
+
+type ListReportRecord struct {
+	Address     string `json:"address"`
+	Alias       string `json:"alias"`
+	PowerSource string `json:"power_source"`
+	Hash        string `json:"hash"`
+}
+
 
 type FromFimpRouter struct {
 	inboundMsgCh fimpgo.MessageCh
@@ -16,10 +25,12 @@ type FromFimpRouter struct {
 	instanceId   string
 	appLifecycle *edgeapp.Lifecycle
 	configs      *model.Configs
+	ttnClient *ttn.LoraTtnClient
+	devDb *model.DevDB
 }
 
-func NewFromFimpRouter(mqt *fimpgo.MqttTransport, appLifecycle *edgeapp.Lifecycle, configs *model.Configs) *FromFimpRouter {
-	fc := FromFimpRouter{inboundMsgCh: make(fimpgo.MessageCh, 5), mqt: mqt, appLifecycle: appLifecycle, configs: configs}
+func NewFromFimpRouter(mqt *fimpgo.MqttTransport,ttnClient *ttn.LoraTtnClient, devDb *model.DevDB, appLifecycle *edgeapp.Lifecycle, configs *model.Configs) *FromFimpRouter {
+	fc := FromFimpRouter{inboundMsgCh: make(fimpgo.MessageCh, 5), mqt: mqt, appLifecycle: appLifecycle, configs: configs,devDb: devDb,ttnClient: ttnClient}
 	fc.mqt.RegisterChannel("ch1", fc.inboundMsgCh)
 	return &fc
 }
@@ -88,30 +99,6 @@ func (fc *FromFimpRouter) routeFimpMessage(newMsg *fimpgo.Message) {
 				fc.mqt.Publish(adr, msg)
 			}
 
-		case "cmd.auth.set_tokens":
-			authReq := model.SetTokens{}
-			err := newMsg.Payload.GetObjectValue(&authReq)
-			if err != nil {
-				log.Error("Incorrect login message ")
-				return
-			}
-			status := model.AuthStatus{
-				Status:    edgeapp.AuthStateAuthenticated,
-				ErrorText: "",
-				ErrorCode: "",
-			}
-			if authReq.AccessToken != "" && authReq.RefreshToken != "" {
-				// TODO: This is an example . Add your logic here or remove
-			} else {
-				status.Status = "ERROR"
-				status.ErrorText = "Empty username or password"
-			}
-			fc.appLifecycle.SetAuthState(edgeapp.AuthStateAuthenticated)
-			msg := fimpgo.NewMessage("evt.auth.status_report", model.ServiceName, fimpgo.VTypeObject, status, nil, nil, newMsg.Payload)
-			if err := fc.mqt.RespondToRequest(newMsg.Payload, msg); err != nil {
-				// if response topic is not set , sending back to default application event topic
-				fc.mqt.Publish(adr, msg)
-			}
 
 		case "cmd.app.get_manifest":
 			mode, err := newMsg.Payload.GetStringValue()
@@ -141,6 +128,9 @@ func (fc *FromFimpRouter) routeFimpMessage(newMsg *fimpgo.Message) {
 				// if response topic is not set , sending back to default application event topic
 				fc.mqt.Publish(adr, msg)
 			}
+
+		case "cmd.ttn.add_device":
+
 
 		case "cmd.config.get_extended_report":
 
@@ -215,13 +205,36 @@ func (fc *FromFimpRouter) routeFimpMessage(newMsg *fimpgo.Message) {
 			}
 
 		case "cmd.network.get_all_nodes":
-			// TODO: This is an example . Add your logic here or remove
+			fc.SendListOfDevices()
+
 		case "cmd.thing.get_inclusion_report":
-			//nodeId , _ := newMsg.Payload.GetStringValue()
-			// TODO: This is an example . Add your logic here or remove
+			address , err := newMsg.Payload.GetStringValue()
+			if err != err {
+				return
+			}
+			dev :=  fc.devDb.GetDeviceByAddress(address)
+			if dev == nil {
+				log.Info("<fimp-r> cmd.thing.get_inclusion_report - unknown address ",address)
+				return
+			}
+			inclReport := dev.GetInclusionReport()
+
+			msg := fimpgo.NewMessage("evt.thing.inclusion_report", model.ServiceName, fimpgo.VTypeObject, inclReport, nil, nil, nil)
+			adr := fimpgo.Address{MsgType: fimpgo.MsgTypeEvt, ResourceType: fimpgo.ResourceTypeAdapter, ResourceName: model.ServiceName, ResourceAddress: "1"}
+			fc.mqt.Publish(&adr, msg)
+			return
+
+
 		case "cmd.thing.inclusion":
 			//flag , _ := newMsg.Payload.GetBoolValue()
-			// TODO: This is an example . Add your logic here or remove
+			/*
+			deviceId;description;deviceEUI;applicationEUI;appKey
+			"props": {
+			    "template_name": "test"
+			  },
+			 */
+
+
 		case "cmd.thing.delete":
 			// remove device from network
 			val, err := newMsg.Payload.GetStrMapValue()
@@ -242,3 +255,19 @@ func (fc *FromFimpRouter) routeFimpMessage(newMsg *fimpgo.Message) {
 	}
 
 }
+
+func (fc *FromFimpRouter) SendListOfDevices() error {
+	var report []ListReportRecord
+	for _,dev := range fc.devDb.Devices() {
+		report = append(report,ListReportRecord{
+			Address:     dev.Address,
+			Alias:       dev.DeviceId,
+			PowerSource: dev.Driver().GetProductInfo().PowerSource,
+			Hash:        dev.Driver().GetProductInfo().ProductHash,
+		})
+	}
+	msg := fimpgo.NewMessage("evt.network.all_nodes_report", model.ServiceName, fimpgo.VTypeObject, report, nil, nil, nil)
+	adr := fimpgo.Address{MsgType: fimpgo.MsgTypeEvt, ResourceType: fimpgo.ResourceTypeAdapter, ResourceName: model.ServiceName, ResourceAddress: "1"}
+	return fc.mqt.Publish(&adr, msg)
+}
+

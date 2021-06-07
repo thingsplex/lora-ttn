@@ -17,7 +17,7 @@ type TtnToFimpRouter struct {
 	appAccessKey string
 }
 
-func NewTtnToFimpRouter(ttnClient *ttn.LoraTtnClient, mqt *fimpgo.MqttTransport, devDb *model.DevDB, appLifecycle *edgeapp.Lifecycle) *TtnToFimpRouter {
+func NewTtnToFimpRouter(mqt *fimpgo.MqttTransport,ttnClient *ttn.LoraTtnClient, devDb *model.DevDB, appLifecycle *edgeapp.Lifecycle) *TtnToFimpRouter {
 	ttnr := &TtnToFimpRouter{ttnClient: ttnClient, mqt: mqt, devDb: devDb, appLifecycle: appLifecycle}
 
 	return ttnr

@@ -94,7 +94,24 @@ func (lc *LoraTtnClient) Subscribe() (<-chan *types.UplinkMessage,error) {
 //
 //}
 
-func (lc *LoraTtnClient) AddDevice(deviceId,comments,deviceEUI,applicationEUI,appKey string ) (*ttnsdk.Device, error) {
+
+// AddDevice
+// deviceId - TTN internal device ID
+// deviceEUI - device global EUI address
+// applicationEUI - LoraWan application id
+// appKey - LoraWan application key
+func (lc *LoraTtnClient) AddDevice(deviceId,description,deviceEUI,applicationEUI,appKey string ) (*ttnsdk.Device, error) {
+	devMan , err := lc.client.ManageDevices()
+
+	if err != nil {
+		return nil, fmt.Errorf("device manager error .err = %s",err.Error())
+	}
+
+	if exDev , _ := lc.GetDeviceByDevEui(deviceEUI);exDev != nil {
+		log.Debugf("<ttn-cl> Device already registered , returning existing device")
+		return exDev.AsDevice(),nil
+	}
+
 
 	devEUI , err := types.ParseDevEUI(deviceEUI)
 	if err != nil {
@@ -114,14 +131,12 @@ func (lc *LoraTtnClient) AddDevice(deviceId,comments,deviceEUI,applicationEUI,ap
 	dev := ttnsdk.Device{}
 	dev.AppID = lc.appID
 	dev.DevID = deviceId
-	dev.Description = comments
+	dev.Description = description
 	dev.DevEUI = devEUI
 	dev.AppEUI = appEUI
 	dev.AppKey = &appKeyT
-	devMan , err := lc.client.ManageDevices()
-	if err != nil {
-		return nil, fmt.Errorf("device manager error .err = %s",err.Error())
-	}
+
+
 	err = devMan.Set(&dev)
 	if err != nil {
 		return nil, fmt.Errorf("can't add new device to ttn .err = %s",err.Error())
@@ -136,18 +151,41 @@ func (lc *LoraTtnClient) Cleanup() {
 	lc.client.Close()
 }
 
+func (lc *LoraTtnClient) GetDeviceByDevEui(deviceEUI string)(*ttnsdk.SparseDevice, error) {
+	devEUI , err := types.ParseDevEUI(deviceEUI)
+	if err != nil {
+		return nil, fmt.Errorf("incorrect deviceEUI err = %s",err.Error())
+	}
+	devices, err := lc.client.ManageDevices()
+	if err != nil {
+		log.WithError(err).Error("could not get device manager")
+	}
+	// List the first 10 devices
+	deviceList, err := devices.List(100, 0)
+	if err != nil {
+		log.WithError(err).Error("<ttn-cl> could not get devices")
+	}
+	log.Info("<ttn-cl> found devices")
+	for _, device := range deviceList {
+		if device.DevEUI == devEUI {
+			return device , nil
+		}
+	}
+	return nil,nil
+}
+
 func (lc *LoraTtnClient) ListDevices() {
 	// Manage devices for the application.
 	devices, err := lc.client.ManageDevices()
 	if err != nil {
-		log.WithError(err).Error("my-amazing-app: could not get device manager")
+		log.WithError(err).Error("<ttn-cl> could not get device manager")
 	}
 	// List the first 10 devices
-	deviceList, err := devices.List(10, 0)
+	deviceList, err := devices.List(100, 0)
 	if err != nil {
-		log.WithError(err).Error("my-amazing-app: could not get devices")
+		log.WithError(err).Error("<ttn-cl> could not get devices")
 	}
-	log.Info("my-amazing-app: found devices")
+	log.Info("<ttn-cl> found devices")
 	for _, device := range deviceList {
 		log.Infof("- %s", device.DevID)
 	}

@@ -8,7 +8,7 @@ func GetDiscoveryResource() discovery.Resource {
 	return discovery.Resource{
 		ResourceName:           ServiceName,
 		ResourceType:           discovery.ResourceTypeAd,
-		Author:                 "your email",
+		Author:                 "aleksandrs.livincovs@gmail.com",
 		IsInstanceConfigurable: false,
 		InstanceId:             "1",
 		Version:                "1",

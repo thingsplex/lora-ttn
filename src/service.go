@@ -38,13 +38,17 @@ func main() {
 
 	ttnClient := ttn.NewLoraTtnClient()
 
+	devDb := model.NewDevDB(configs.GetDataDir())
+	devDb.LoadFromFile()
+	//devDb.AddDeviceByModel("A840418C71825AE0","dragino_lds01")
+
 	mqtt := fimpgo.NewMqttTransport(configs.MqttServerURI, configs.MqttClientIdPrefix, configs.MqttUsername, configs.MqttPassword, true, 1, 1)
 	err = mqtt.Start()
 	responder := discovery.NewServiceDiscoveryResponder(mqtt)
 	responder.RegisterResource(model.GetDiscoveryResource())
 	responder.Start()
 
-	fimpRouter := router.NewFromFimpRouter(mqtt, appLifecycle, configs)
+	fimpRouter := router.NewFromFimpRouter(mqtt,ttnClient,devDb, appLifecycle, configs)
 	fimpRouter.Start()
 	//------------------ Remote API check -- !!!!IMPORTANT!!!!-------------
 	// The app MUST perform remote API availability check.
@@ -55,12 +59,7 @@ func main() {
 	sys.WaitForInternet(time.Minute * 60)
 	//---------------------------------------------------------------------
 
-	devDb := model.NewDevDB()
-
-	devDb.AddDeviceByModel("A840418C71825AE0","dragino_lds01")
-
-
-	ttnRouter := router.NewTtnToFimpRouter(ttnClient,mqtt,devDb,appLifecycle)
+	ttnRouter := router.NewTtnToFimpRouter(mqtt,ttnClient,devDb,appLifecycle)
 
 	appLifecycle.SetAppState(edgeapp.AppStateRunning, nil)
 
